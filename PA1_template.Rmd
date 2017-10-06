@@ -1,25 +1,134 @@
 ---
-title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
+title: "P1template"
+output: html_document
 ---
 
+installa.packages("psych")
+library(knitr)
+opts_chunk$set(tidy=TRUE)
 
 ## Loading and preprocessing the data
-
-
+setwd('C:/Users/I074919/Documents/document/projects/Data Science/Exercise/repdata%2Fdata%2Factivity')
+activity <- read.csv("activity.csv", header=TRUE)
+# convert character date to POSIX date
+activity$date <- as.POSIXct(strptime(activity$date, "%Y-%m-%d"),tz="")
+# first convert integer time to character and pad with leading zeros...
+activity$time     <- sprintf("%04d", activity$interval)#C style language, fill in leading zeros
+# ...then convert to the date type
+activity$time     <- as.POSIXct(activity$time, "%H%M",tz="")
+head(activity)
+str(activity)
 
 ## What is mean total number of steps taken per day?
+total_steps_by_date <- aggregate(list(total_steps = activity$steps),
+                                 by=list(date = activity$date),
+                                 FUN=sum,
+                                 na.rm=TRUE)
+# In order to avoid waring of Hebrew characters occurs, 
+# use windows() function to set width and height in advance
+options(device = function(file, width = 7, height = 7, ...) {
+windows(width = width, height = height, ...)
+ })
 
-
+par(mfrow=c(1,2))# 1 row, 2 columns
+# frequencies
+hist(total_steps_by_date$total_steps,
+     breaks=30,
+     xlab="Total Steps",
+     main="Total Steps Per Day",
+     col="lightblue")
+# desnsity
+plot(density(total_steps_by_date$total_steps,
+             na.rm=TRUE),
+     xlab="Total Steps",
+     ylab="Density",
+     main="Total Steps Per Day",     
+     col="purple",
+     lwd=3)
+par(mfrow=c(1,1))
+mean(total_steps_by_date$total_steps)
+median(total_steps_by_date$total_steps,na.rm=T)
+dev.copy(png, file="Plot1.png", height=480, width=480) 
+dev.off()
 
 ## What is the average daily activity pattern?
-
-
-
+average_steps_by_time <- aggregate(list(average_steps = activity$steps),
+                                   by=list(time = activity$time,
+                                           interval = activity$interval),
+                                   FUN=mean,
+                                   na.rm=TRUE)
+plot(average_steps ~ time,
+     data=average_steps_by_time,
+     xlab="Time interval",
+     ylab="Mean steps",
+     main="Mean Steps By Time Interval",
+     type="l",
+     col="blue",
+     lwd=2)
+average_steps_by_time[which.max(average_steps_by_time$average_steps),]
+dev.copy(png, file="Plot2.png", height=480, width=480) 
+dev.off()
 ## Imputing missing values
-
-
-
+sum(is.na(activity[,"steps"]))
+# "join" the two data frames using merge()
+activity_imputed <- merge(activity,average_steps_by_time,by="interval")
+# correct the NA steps with average steps for the interval
+activity_imputed <- within(activity_imputed,
+                           steps <- ifelse(is.na(activity_imputed$steps),
+                           activity_imputed$average_steps,
+                           activity_imputed$steps))
+total_steps_by_date_imputed <- aggregate(list(total_steps = activity_imputed$steps),
+                                         by=list(date = activity_imputed$date),
+                                         FUN=sum,
+                                         na.rm=FALSE)
+par(mfrow=c(1,2))
+# frequencies
+hist(total_steps_by_date_imputed$total_steps,
+     breaks=30,
+     xlab="Total Steps",
+     main="Total Steps Per Day",
+     col="lightblue")
+# desnsity
+plot(density(total_steps_by_date_imputed$total_steps,
+             na.rm=TRUE),
+     xlab="Total Steps",
+     ylab="Density",
+     main="Total Steps Per Day",     
+     col="purple",
+     lwd=3)
+par(mfrow=c(1,1))
+mean(total_steps_by_date_imputed$total_steps)
+median(total_steps_by_date_imputed$total_steps)
+dev.copy(png, file="Plot3.png", height=480, width=480) 
+dev.off()										 
 ## Are there differences in activity patterns between weekdays and weekends?
+# first add a character column for day of the week
+activity_imputed$weekday  <- weekdays(activity_imputed$date)
+# now populate a new factor column using day of the week and a simple function
+activity_imputed$weekend_indicator <- as.factor(apply(activity_imputed["weekday"], 1, function(x) {
+  switch(x,
+         "Sunday" = "weekend",
+         "Saturday" = "weekend",
+         "weekday")
+}))
+# confirm that we have the character and factor types we expect
+str(activity_imputed)
+average_steps_by_time_weekend <- aggregate(list(average_steps = activity_imputed$steps),
+                                           by=list(time       = activity_imputed$time.x,
+                                                   daytype    = activity_imputed$weekend_indicator),
+                                           FUN=mean)
+library(ggplot2)
+qplot(x = time,
+      y = average_steps,
+      geom="path",
+      data = average_steps_by_time_weekend, 
+      xlab="Time interval",
+      ylab="Average steps",
+      main="Activity Patterns\nWeekdays vs. Weekends",
+      facets = daytype ~ .)
+library(psych)
+by(average_steps_by_time_weekend,
+   average_steps_by_time_weekend$daytype,
+   FUN=describe)
+   dev.copy(png, file="Plot4.png", height=480, width=480) 
+dev.off()
